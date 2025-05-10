@@ -1,55 +1,69 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Elementos Comuns ---
+    // --- Seletores de Elementos (mantêm-se os mesmos) ---
     const itemInput = document.getElementById('itemInput');
     const addItemBtn = document.getElementById('addItemBtn');
-    const feedbackMessageContainer = document.getElementById('feedbackMessage'); // Container para alertas Bootstrap
+    const feedbackMessageContainer = document.getElementById('feedbackMessage');
     const categorySelect = document.getElementById('categorySelect');
 
     const shoppingListUL = document.getElementById('shoppingList');
     const filterInput = document.getElementById('filterInput');
-    const clearCategoryBtn = document.getElementById('clearCategoryBtn');
-    const emptyListMessage = document.getElementById('emptyListMessage'); // Agora é um alert Bootstrap
+    const clearCategoryBtn = document.getElementById('clearCategoryBtn'); // Funcionalidade a ser reavaliada com o novo backend
+    const emptyListMessage = document.getElementById('emptyListMessage');
     const categoryTabsContainer = document.getElementById('categoryTabs');
     const currentYearSpan = document.getElementById('currentYear');
 
-    // --- Dados e Estado ---
-    const categoriasDisponiveis = ["mercado", "farmácia", "petshop", "casa", "escritório", "feira", "outros"];
-    let todasAsListas = JSON.parse(localStorage.getItem('todasAsListas')) || {};
-    categoriasDisponiveis.forEach(cat => {
-        if (!todasAsListas[cat]) {
-            todasAsListas[cat] = [];
-        }
-    });
+    // --- Configuração da API ---
+    const apiUrlBase = 'COLE_A_URL_DE_INVOCACAO_BASE_DO_SEU_API_GATEWAY_AQUI/SEU_ESTAGIO'; // Ex: https://abc123xyz.execute-api.sa-east-1.amazonaws.com/dev
 
+    // --- Dados e Estado do Frontend ---
+    const categoriasDisponiveis = ["mercado", "farmácia", "petshop", "casa", "escritório", "feira", "outros"];
+    let todasAsListas = {}; // Vai armazenar { mercado: [itens], farmacia: [itens], ... }
     let categoriaAtiva = localStorage.getItem('categoriaAtiva') || categoriasDisponiveis[0];
+    let semanaIdAtiva = ''; // Será definida ao carregar, ex: "2025-S19"
     let currentFilter = '';
 
-    // --- Funções ---
-    function saveLists() {
-        localStorage.setItem('todasAsListas', JSON.stringify(todasAsListas));
+    // --- Funções Auxiliares ---
+    function saveActiveCategoryState() {
+        // Salva a categoria ativa para a semanaIdAtiva, para persistir a aba selecionada
+        if (semanaIdAtiva) {
+            localStorage.setItem(`categoriaAtiva_${semanaIdAtiva}`, categoriaAtiva);
+        }
     }
 
-    function saveActiveCategory() {
-        localStorage.setItem('categoriaAtiva', categoriaAtiva);
+    function loadActiveCategoryState() {
+        if (semanaIdAtiva) {
+            categoriaAtiva = localStorage.getItem(`categoriaAtiva_${semanaIdAtiva}`) || categoriasDisponiveis[0];
+        } else {
+            categoriaAtiva = categoriasDisponiveis[0];
+        }
     }
-
+    
     function updateCurrentYear() {
         if (currentYearSpan) {
             currentYearSpan.textContent = new Date().getFullYear();
         }
     }
 
+    // Helper no frontend para estrutura vazia
+    function get_empty_list_data_frontend() {
+        let emptyData = {};
+        categoriasDisponiveis.forEach(cat => { emptyData[cat] = []; });
+        return emptyData;
+    }
+
     function popularDropdownCategorias() {
         if (categorySelect) {
-            categorySelect.innerHTML = '<option value="" selected disabled>Selecione uma categoria...</option>';
+            const categoriaSalvaParaAdicionar = localStorage.getItem('ultimaCategoriaAdicionada') || categoriaAtiva;
+            categorySelect.innerHTML = '<option value="" disabled>Selecione uma categoria...</option>';
             categoriasDisponiveis.forEach(cat => {
                 const option = document.createElement('option');
                 option.value = cat;
                 option.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
                 categorySelect.appendChild(option);
             });
-            if (localStorage.getItem('categoriaAtiva')) {
-                categorySelect.value = localStorage.getItem('categoriaAtiva');
+            categorySelect.value = categoriaSalvaParaAdicionar; // Pré-seleciona
+             if (!categorySelect.value && categoriasDisponiveis.length > 0) { // Garante que algo esteja selecionado se possível
+                categorySelect.value = categoriasDisponiveis[0];
             }
         }
     }
@@ -57,14 +71,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderCategoryTabs() {
         if (!categoryTabsContainer) return;
         categoryTabsContainer.innerHTML = '';
+        const semanaIdExibicao = semanaIdAtiva ? ` (Semana: ${semanaIdAtiva})` : '';
+        // Poderia adicionar um título para a semana aqui ou no H1 da página de listas.
+
         categoriasDisponiveis.forEach(cat => {
             const navItem = document.createElement('li');
             navItem.classList.add('nav-item');
-
             const tabButton = document.createElement('button');
             tabButton.classList.add('nav-link');
             tabButton.dataset.category = cat;
-            tabButton.type = 'button'; // Importante para botões em listas de navegação
+            tabButton.type = 'button';
             tabButton.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
             if (cat === categoriaAtiva) {
                 tabButton.classList.add('active');
@@ -72,18 +88,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             tabButton.addEventListener('click', () => {
                 categoriaAtiva = cat;
-                saveActiveCategory();
+                saveActiveCategoryState(); // Salva estado da aba para a semana atual
                 currentFilter = '';
                 if (filterInput) filterInput.value = '';
                 renderListForActiveCategory();
-                updateActiveTabStates();
+                updateActiveTabStatesVisual();
             });
             navItem.appendChild(tabButton);
             categoryTabsContainer.appendChild(navItem);
         });
     }
 
-    function updateActiveTabStates() {
+    function updateActiveTabStatesVisual() {
         if (!categoryTabsContainer) return;
         document.querySelectorAll('#categoryTabs .nav-link').forEach(btn => {
             btn.classList.remove('active');
@@ -99,14 +115,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!shoppingListUL) return;
 
         shoppingListUL.innerHTML = '';
-        const itensDaCategoria = todasAsListas[categoriaAtiva] || [];
-        const filteredItems = itensDaCategoria.filter(item =>
+        const itensDaCategoriaAtiva = todasAsListas[categoriaAtiva] || [];
+        const filteredItems = itensDaCategoriaAtiva.filter(item =>
             item.name.toLowerCase().includes(currentFilter.toLowerCase())
         );
 
-        if (itensDaCategoria.length === 0) {
+        if (itensDaCategoriaAtiva.length === 0) {
             if (emptyListMessage) {
-                emptyListMessage.textContent = `A categoria "${categoriaAtiva.charAt(0).toUpperCase() + categoriaAtiva.slice(1)}" está vazia!`;
+                emptyListMessage.textContent = `A categoria "${categoriaAtiva.charAt(0).toUpperCase() + categoriaAtiva.slice(1)}" está vazia para a semana ${semanaIdAtiva || 'atual'}!`;
                 emptyListMessage.style.display = 'block';
             }
         } else if (filteredItems.length === 0 && currentFilter) {
@@ -120,38 +136,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         filteredItems.forEach((item) => {
-            const itemIndex = todasAsListas[categoriaAtiva].findIndex(original => original.id === item.id);
-
             const listItem = document.createElement('li');
             listItem.classList.add('list-group-item', 'd-flex', 'justify-content-between', 'align-items-center');
+            // Adicionar data-attributes para identificar o item e sua categoria
+            listItem.dataset.itemid = item.id_interno; // O UUID do item
+            listItem.dataset.categoria = item.categoria; // A categoria do item
+
             if (item.comprado) {
                 listItem.classList.add('comprado');
             }
 
             const itemNameSpan = document.createElement('span');
-            itemNameSpan.classList.add('item-name'); // Classe para aplicar cursor e estilo
+            itemNameSpan.classList.add('item-name');
             itemNameSpan.textContent = item.name;
-            itemNameSpan.addEventListener('click', () => toggleComprado(itemIndex));
+            // O evento de clique no nome do item agora também pode usar os data-attributes do LI
+            itemNameSpan.addEventListener('click', (e) => {
+                const li = e.target.closest('li');
+                toggleComprado(li.dataset.categoria, li.dataset.itemid);
+            });
+
 
             const actionsDiv = document.createElement('div');
-
             const toggleBtn = document.createElement('button');
             toggleBtn.classList.add('btn', 'btn-sm', 'me-2', 'btn-toggle-bought');
             toggleBtn.title = item.comprado ? 'Marcar como não comprado' : 'Marcar como comprado';
             if (item.comprado) {
-                toggleBtn.classList.add('btn-success'); // Verde sólido se comprado
+                toggleBtn.classList.add('btn-success');
                 toggleBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i>';
             } else {
-                toggleBtn.classList.add('btn-outline-success'); // Borda verde se não comprado
+                toggleBtn.classList.add('btn-outline-success');
                 toggleBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
             }
-            toggleBtn.addEventListener('click', () => toggleComprado(itemIndex));
+            // Event listener será delegado à UL
 
             const removeBtn = document.createElement('button');
             removeBtn.classList.add('btn', 'btn-sm', 'btn-outline-danger', 'btn-remove');
             removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
             removeBtn.title = 'Remover item';
-            removeBtn.addEventListener('click', () => removerItem(itemIndex));
+            // Event listener será delegado à UL
 
             actionsDiv.appendChild(toggleBtn);
             actionsDiv.appendChild(removeBtn);
@@ -161,37 +183,96 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function showFeedback(message, type = 'info') { // type: 'success', 'danger', 'warning', 'info'
+    function showFeedback(message, type = 'info') {
         if (feedbackMessageContainer) {
-            const alertType = type === 'error' ? 'danger' : type; // Mapeia 'error' para 'danger' do Bootstrap
+            const alertType = type === 'error' ? 'danger' : type;
+            const alertId = `feedbackAlert-${Date.now()}`;
             const alertDiv = document.createElement('div');
+            alertDiv.id = alertId;
             alertDiv.className = `alert alert-${alertType} alert-dismissible fade show mt-3`;
             alertDiv.setAttribute('role', 'alert');
             alertDiv.innerHTML = `
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             `;
-            feedbackMessageContainer.innerHTML = ''; // Limpa mensagens antigas
+            // Limpa mensagens antigas antes de adicionar uma nova para não acumular.
+            // feedbackMessageContainer.innerHTML = ''; (Removido para permitir múltiplas mensagens se necessário, mas com auto-dismiss)
             feedbackMessageContainer.appendChild(alertDiv);
-
-            // Auto-dismiss (opcional)
-            // setTimeout(() => {
-            //     const bootstrapAlert = bootstrap.Alert.getInstance(alertDiv);
-            //     if (bootstrapAlert) {
-            //         bootstrapAlert.close();
-            //     }
-            // }, 5000);
+            
+            // Auto-dismiss após 5 segundos
+            setTimeout(() => {
+                const activeAlert = document.getElementById(alertId);
+                if(activeAlert){
+                    const bsAlert = bootstrap.Alert.getInstance(activeAlert);
+                    if (bsAlert) {
+                        bsAlert.close();
+                    } else { // Fallback se o JS do Bootstrap não fechar
+                        activeAlert.remove();
+                    }
+                }
+            }, 5000);
         }
     }
 
+    // --- Funções de Interação com API ---
 
-    function adicionarItemHandler() {
+    async function carregarItensDaSemana(semanaId = 'atual') {
+        const url = `${apiUrlBase}/listas/${semanaId}`;
+        showFeedback(`Carregando lista para semana ${semanaId}...`, 'info');
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(`Erro ${response.status}: ${errorData.error || response.statusText}`);
+            }
+            const backendResponse = await response.json(); // Espera { semanaIdUtilizada: "...", dadosAgrupados: {...} }
+            
+            // MODIFICAÇÃO IMPORTANTE: Esperar que o backend retorne qual semana foi usada para 'atual'
+            if (backendResponse && backendResponse.semanaIdUtilizada) {
+                semanaIdAtiva = backendResponse.semanaIdUtilizada;
+                todasAsListas = backendResponse.dadosAgrupados || get_empty_list_data_frontend();
+            } else if (semanaId !== 'atual') { // Se pediu semana específica e obteve dados
+                semanaIdAtiva = semanaId;
+                todasAsListas = backendResponse || get_empty_list_data_frontend(); // Backend retorna direto os dadosAgrupados
+            } else { // Fallback se 'atual' não retornou semanaIdUtilizada
+                 semanaIdAtiva = (new Date()).getFullYear() + "-S" + String(Math.ceil((((new Date()) - new Date((new Date()).getFullYear(),0,1)) / 86400000 + new Date((new Date()).getFullYear(),0,1).getDay()+1)/7)).padStart(2,'0'); // Cálculo simples, melhor se backend informar
+                 todasAsListas = backendResponse || get_empty_list_data_frontend();
+            }
+
+            // Garante que todas as categorias locais existam
+            categoriasDisponiveis.forEach(cat => {
+                if (!todasAsListas[cat]) {
+                    todasAsListas[cat] = [];
+                }
+            });
+            
+            loadActiveCategoryState(); // Carrega a aba ativa para a semana carregada
+            if (document.getElementById('categoryTabs')) {
+                renderCategoryTabs(); // Renderiza abas
+                updateActiveTabStatesVisual(); // Garante que a aba correta está ativa visualmente
+                renderListForActiveCategory(); // Renderiza itens para a categoria ativa
+            }
+            popularDropdownCategorias(); // Popula dropdown de categorias
+            showFeedback(`Lista para semana ${semanaIdAtiva} carregada!`, "success");
+
+        } catch (error) {
+            console.error(`Falha ao carregar itens para ${semanaId}:`, error);
+            showFeedback(error.message || "Não foi possível carregar seus itens.", "danger");
+            todasAsListas = get_empty_list_data_frontend();
+            if (document.getElementById('categoryTabs')) {
+                 renderCategoryTabs(); renderListForActiveCategory();
+            }
+            popularDropdownCategorias();
+        }
+    }
+
+    async function adicionarItemHandler() {
         if (!itemInput || !categorySelect) return;
 
-        const itemName = itemInput.value.trim();
+        const nomeItem = itemInput.value.trim();
         const categoriaSelecionada = categorySelect.value;
 
-        if (itemName === '') {
+        if (nomeItem === '') {
             showFeedback('Por favor, digite o nome do item.', 'warning');
             itemInput.focus();
             return;
@@ -201,78 +282,161 @@ document.addEventListener('DOMContentLoaded', () => {
             categorySelect.focus();
             return;
         }
-
-        if (!todasAsListas[categoriaSelecionada]) {
-            todasAsListas[categoriaSelecionada] = [];
+        if (!semanaIdAtiva) {
+            showFeedback("Não foi possível determinar a semana ativa. Recarregue a página.", "danger");
+            return;
         }
 
-        todasAsListas[categoriaSelecionada].push({ id: Date.now(), name: itemName, comprado: false });
-        itemInput.value = '';
-        // categorySelect.value = ''; // Opcional: resetar select ou manter a última categoria
-        saveLists();
-        categoriaAtiva = categoriaSelecionada; // Para conveniência, ir para a categoria do item adicionado
-        saveActiveCategory();
-        showFeedback(`"${itemName}" adicionado à categoria "${categoriaSelecionada.charAt(0).toUpperCase() + categoriaSelecionada.slice(1)}" com sucesso!`, 'success');
-        itemInput.focus();
-    }
+        const url = `${apiUrlBase}/listas/${semanaIdAtiva}/categorias/${categoriaSelecionada}/items`;
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nomeItem: nomeItem })
+            });
 
-    function toggleComprado(itemIndexNaCategoria) {
-        const itensDaCategoria = todasAsListas[categoriaAtiva];
-        if (itensDaCategoria && itemIndexNaCategoria >= 0 && itemIndexNaCategoria < itensDaCategoria.length) {
-            itensDaCategoria[itemIndexNaCategoria].comprado = !itensDaCategoria[itemIndexNaCategoria].comprado;
-            saveLists();
-            renderListForActiveCategory();
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(`Erro ${response.status}: ${errData.error || 'Falha ao adicionar item.'}`);
+            }
+            const itemAdicionadoDoBackend = await response.json();
+
+            // Adicionar o item à 'todasAsListas' localmente
+            if (!todasAsListas[itemAdicionadoDoBackend.categoria]) {
+                todasAsListas[itemAdicionadoDoBackend.categoria] = [];
+            }
+            // O item do backend já vem com id_interno, name, comprado, categoria
+            todasAsListas[itemAdicionadoDoBackend.categoria].push({
+                id_interno: itemAdicionadoDoBackend.id_interno,
+                name: itemAdicionadoDoBackend.name,
+                comprado: itemAdicionadoDoBackend.comprado,
+                categoria: itemAdicionadoDoBackend.categoria, // Garantir que a categoria está no item local
+                categoriaItemID_completo: itemAdicionadoDoBackend.categoriaItemID_completo // Opcional
+            });
+            
+            localStorage.setItem('ultimaCategoriaAdicionada', categoriaSelecionada);
+            if (categoriaSelecionada === categoriaAtiva) {
+                renderListForActiveCategory(); // Re-renderiza apenas se a categoria ativa foi modificada
+            }
+            showFeedback(`"${itemAdicionadoDoBackend.name}" adicionado à categoria ${itemAdicionadoDoBackend.categoria}!`, 'success');
+            itemInput.value = '';
+            itemInput.focus();
+
+        } catch (error) {
+            console.error("Falha ao adicionar item:", error);
+            showFeedback(error.message || "Erro ao adicionar item.", "danger");
         }
     }
 
-    function removerItem(itemIndexNaCategoria) {
-        const itensDaCategoria = todasAsListas[categoriaAtiva];
-        if (itensDaCategoria && itemIndexNaCategoria >= 0 && itemIndexNaCategoria < itensDaCategoria.length) {
-            const itemRemovido = itensDaCategoria.splice(itemIndexNaCategoria, 1);
-            saveLists();
-            renderListForActiveCategory();
-            // showFeedback(`"${itemRemovido[0].name}" removido da lista.`, 'info'); // Feedback opcional
+    async function toggleComprado(categoria, itemIdInterno) {
+        const item = todasAsListas[categoria]?.find(i => i.id_interno === itemIdInterno);
+        if (!item || !semanaIdAtiva) return;
+
+        const novoEstadoComprado = !item.comprado;
+        const url = `${apiUrlBase}/listas/${semanaIdAtiva}/categorias/${categoria}/items/${itemIdInterno}`;
+        try {
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comprado: novoEstadoComprado })
+            });
+            if (!response.ok) {
+                 const errData = await response.json().catch(() => ({}));
+                 throw new Error(`Erro ${response.status}: ${errData.error || 'Falha ao atualizar item.'}`);
+            }
+            
+            item.comprado = novoEstadoComprado; // Atualiza localmente
+            if (categoria === categoriaAtiva) { // Re-renderiza a lista se for da categoria ativa
+                renderListForActiveCategory();
+            }
+        } catch (error) {
+            console.error("Falha ao atualizar item:", error);
+            showFeedback(error.message || "Erro ao atualizar item.", "danger");
         }
     }
 
-    function clearActiveCategoryItems() {
-        const nomeCategoriaCapitalizada = categoriaAtiva.charAt(0).toUpperCase() + categoriaAtiva.slice(1);
-        // Usar um modal do Bootstrap para confirmação seria mais elegante, mas `confirm` é mais simples por agora.
-        if (confirm(`Tem certeza que deseja remover TODOS os itens da categoria "${nomeCategoriaCapitalizada}"?`)) {
-            todasAsListas[categoriaAtiva] = [];
-            saveLists();
-            renderListForActiveCategory();
-            showFeedback(`Todos os itens da categoria "${nomeCategoriaCapitalizada}" foram removidos.`, 'info');
+    async function removerItem(categoria, itemIdInterno) {
+        if (!semanaIdAtiva || !confirm(`Remover "${todasAsListas[categoria]?.find(i=>i.id_interno === itemIdInterno)?.name}" da lista?`)) return;
+
+        const url = `${apiUrlBase}/listas/${semanaIdAtiva}/categorias/${categoria}/items/${itemIdInterno}`;
+        try {
+            const response = await fetch(url, { method: 'DELETE' });
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(`Erro ${response.status}: ${errData.error || 'Falha ao remover item.'}`);
+            }
+
+            // Remove localmente
+            todasAsListas[categoria] = todasAsListas[categoria]?.filter(i => i.id_interno !== itemIdInterno);
+            if (categoria === categoriaAtiva) { // Re-renderiza a lista se for da categoria ativa
+                renderListForActiveCategory();
+            }
+            showFeedback("Item removido.", "info");
+        } catch (error) {
+            console.error("Falha ao remover item:", error);
+            showFeedback(error.message || "Erro ao remover item.", "danger");
         }
     }
+    
+    // Função de limpar categoria precisa ser adaptada ou removida,
+    // pois agora os itens são individuais. Limpar significaria deletar todos os itens um por um
+    // ou ter um endpoint de backend específico para "limpar categoria da semana".
+    // Por simplicidade, vamos comentar o event listener por enquanto.
+    // if (clearCategoryBtn) {
+    //     clearCategoryBtn.addEventListener('click', () => {
+    //         if(!semanaIdAtiva || !categoriaAtiva) return;
+    //         if (confirm(`Tem certeza que deseja remover TODOS os itens da categoria "${categoriaAtiva}" para a semana ${semanaIdAtiva}?`)) {
+    //             // TODO: Implementar a lógica de deletar múltiplos itens via backend,
+    //             // ou iterar e chamar removerItem para cada um.
+    //             console.warn("Funcionalidade de limpar categoria não totalmente implementada para o novo backend.");
+    //         }
+    //     });
+    // }
+
 
     // --- Event Listeners ---
     if (addItemBtn) {
         addItemBtn.addEventListener('click', adicionarItemHandler);
     }
-    if (itemInput) { // Permitir adicionar com Enter
+    if (itemInput) {
         itemInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
                 adicionarItemHandler();
             }
         });
     }
-
     if (filterInput) {
         filterInput.addEventListener('input', (event) => {
             currentFilter = event.target.value;
-            renderListForActiveCategory();
+            if (shoppingListUL) renderListForActiveCategory();
         });
     }
-    if (clearCategoryBtn) {
-        clearCategoryBtn.addEventListener('click', clearActiveCategoryItems);
+
+    // Delegação de eventos para botões na lista de compras
+    if (shoppingListUL) {
+        shoppingListUL.addEventListener('click', function(event) {
+            const targetButton = event.target.closest('button');
+            if (!targetButton) return;
+
+            const listItem = targetButton.closest('li');
+            if (!listItem) return;
+
+            const itemId = listItem.dataset.itemid;
+            const categoria = listItem.dataset.categoria;
+
+            if (targetButton.classList.contains('btn-toggle-bought')) {
+                toggleComprado(categoria, itemId);
+            } else if (targetButton.classList.contains('btn-remove')) {
+                removerItem(categoria, itemId);
+            }
+        });
     }
 
     // --- Inicialização ---
     updateCurrentYear();
-    popularDropdownCategorias();
-    renderCategoryTabs();
-    if (shoppingListUL) {
-        renderListForActiveCategory();
-    }
+    // Define a semanaIdAtiva inicial e carrega os dados.
+    // Poderia ter um seletor de semana na UI para o usuário mudar 'semanaIdAtiva'
+    // e então chamar carregarItensDaSemana(novaSemanaId).
+    // Por enquanto, sempre carrega "atual".
+    carregarItensDaSemana('atual');
 });
