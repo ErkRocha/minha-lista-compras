@@ -1,0 +1,55 @@
+/* Estilo para o corpo para garantir que o footer fique no rodapé em páginas com pouco conteúdo */
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f8f9fa; /* Um cinza bem claro de fundo */
+}
+
+main {
+    flex-grow: 1; /* Faz o conteúdo principal crescer e empurrar o footer */
+}
+
+/* Ajuste para itens da lista marcados como comprados */
+#shoppingList .list-group-item.comprado .item-name {
+    text-decoration: line-through;
+    color: #6c757d; /* Cinza do Bootstrap (muted) */
+}
+
+#shoppingList .list-group-item.comprado {
+    background-color: #e9ecef; /* Um cinza um pouco mais escuro */
+}
+
+/* Para dar um cursor pointer nos nomes dos itens, indicando que são clicáveis */
+#shoppingList .item-name {
+    cursor: pointer;
+    flex-grow: 1; /* Para o nome ocupar o espaço disponível */
+    margin-right: 10px; /* Espaço antes dos botões */
+}
+
+/* Ajustes nas abas para melhor visualização */
+#categoryTabs .nav-link {
+    color: var(--bs-primary); /* Usa a cor primária do Bootstrap para abas inativas */
+}
+
+#categoryTabs .nav-link.active {
+    color: var(--bs-nav-tabs-link-active-color); /* Cor padrão do Bootstrap para aba ativa */
+    background-color: var(--bs-nav-tabs-link-active-bg);
+    border-color: var(--bs-nav-tabs-link-active-border-color);
+}
+
+/* Garantir que o feedback message tenha um bom contraste */
+#feedbackMessage .alert {
+    padding: 0.75rem 1rem; /* Ajuste no padding se necessário */
+}
+
+/* Opcional: Melhorar a aparência do select na página de adicionar */
+/* #categorySelect {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+} */
