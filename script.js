@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentYearSpan = document.getElementById('currentYear');
 
     // --- Configuração da API ---
-    const apiUrlBase = 'COLE_A_URL_DE_INVOCACAO_BASE_DO_SEU_API_GATEWAY_AQUI/SEU_ESTAGIO'; // Ex: https://abc123xyz.execute-api.sa-east-1.amazonaws.com/dev
+    const apiUrlBase = "https://t7gqeja237.execute-api.us-east-1.amazonaws.com/v1;"; 
 
     // --- Dados e Estado do Frontend ---
     const categoriasDisponiveis = ["mercado", "farmácia", "petshop", "casa", "escritório", "feira", "outros"];
