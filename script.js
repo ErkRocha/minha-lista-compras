@@ -1,5 +1,10 @@
+// SCRIPT.JS: Arquivo script.js carregado e interpretado.
+console.log("SCRIPT.JS: Arquivo script.js carregado e interpretado.");
+
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Seletores de Elementos (mantêm-se os mesmos) ---
+    console.log("SCRIPT.JS: Evento DOMContentLoaded disparado."); // LOG A
+
+    // --- Seletores de Elementos ---
     const itemInput = document.getElementById('itemInput');
     const addItemBtn = document.getElementById('addItemBtn');
     const feedbackMessageContainer = document.getElementById('feedbackMessage');
@@ -7,13 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const shoppingListUL = document.getElementById('shoppingList');
     const filterInput = document.getElementById('filterInput');
-    const clearCategoryBtn = document.getElementById('clearCategoryBtn'); // Funcionalidade a ser reavaliada com o novo backend
+    const clearCategoryBtn = document.getElementById('clearCategoryBtn');
     const emptyListMessage = document.getElementById('emptyListMessage');
     const categoryTabsContainer = document.getElementById('categoryTabs');
     const currentYearSpan = document.getElementById('currentYear');
 
     // --- Configuração da API ---
-    const apiUrlBase = "https://t7gqeja237.execute-api.us-east-1.amazonaws.com/v1";
+    const apiUrlBase = "https://t7gqeja237.execute-api.us-east-1.amazonaws.com/v1"; // Certifique-se que esta é sua URL correta
+    console.log("SCRIPT.JS: apiUrlBase definida como:", apiUrlBase); // LOG B
 
 
     // --- Dados e Estado do Frontend ---
@@ -25,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Funções Auxiliares ---
     function saveActiveCategoryState() {
-        // Salva a categoria ativa para a semanaIdAtiva, para persistir a aba selecionada
         if (semanaIdAtiva) {
             localStorage.setItem(`categoriaAtiva_${semanaIdAtiva}`, categoriaAtiva);
         }
@@ -35,7 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (semanaIdAtiva) {
             categoriaAtiva = localStorage.getItem(`categoriaAtiva_${semanaIdAtiva}`) || categoriasDisponiveis[0];
         } else {
-            categoriaAtiva = categoriasDisponiveis[0];
+            // Se semanaIdAtiva não estiver definida, usa a primeira categoria como padrão
+            // ou a última categoria globalmente salva, se preferir.
+            categoriaAtiva = localStorage.getItem('categoriaAtiva_global_fallback') || categoriasDisponiveis[0];
         }
     }
     
@@ -45,12 +52,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper no frontend para estrutura vazia
     function get_empty_list_data_frontend() {
         let emptyData = {};
         categoriasDisponiveis.forEach(cat => { emptyData[cat] = []; });
         return emptyData;
     }
+
+    // Função helper para getCurrentWeekIdFrontend (pode precisar de ajustes para precisão ISO 8601 total em bordas de ano)
+    function getCurrentWeekIdFrontend() {
+        const today = new Date();
+        const year = today.getFullYear();
+        // Aproximação simples para número da semana.
+        // A lógica do backend com isocalendar() é mais precisa para a norma ISO 8601.
+        const firstDayOfYear = new Date(year, 0, 1);
+        const dayNum = Math.floor((today - firstDayOfYear) / (24 * 60 * 60 * 1000)) + 1;
+        let weekNum = Math.ceil(dayNum / 7);
+        // Garante que seja no formato SNN
+        return `${year}-S${String(weekNum).padStart(2, '0')}`;
+    }
+
 
     function popularDropdownCategorias() {
         if (categorySelect) {
@@ -62,8 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 option.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
                 categorySelect.appendChild(option);
             });
-            categorySelect.value = categoriaSalvaParaAdicionar; // Pré-seleciona
-             if (!categorySelect.value && categoriasDisponiveis.length > 0) { // Garante que algo esteja selecionado se possível
+            categorySelect.value = categoriaSalvaParaAdicionar;
+             if (!categorySelect.value && categoriasDisponiveis.length > 0) {
                 categorySelect.value = categoriasDisponiveis[0];
             }
         }
@@ -72,8 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderCategoryTabs() {
         if (!categoryTabsContainer) return;
         categoryTabsContainer.innerHTML = '';
-        const semanaIdExibicao = semanaIdAtiva ? ` (Semana: ${semanaIdAtiva})` : '';
-        // Poderia adicionar um título para a semana aqui ou no H1 da página de listas.
+        // const semanaIdExibicao = semanaIdAtiva ? ` (Semana: ${semanaIdAtiva})` : ''; // Pode adicionar à UI se desejar
 
         categoriasDisponiveis.forEach(cat => {
             const navItem = document.createElement('li');
@@ -89,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             tabButton.addEventListener('click', () => {
                 categoriaAtiva = cat;
-                saveActiveCategoryState(); // Salva estado da aba para a semana atual
+                saveActiveCategoryState();
                 currentFilter = '';
                 if (filterInput) filterInput.value = '';
                 renderListForActiveCategory();
@@ -112,18 +131,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // VERSÃO COM LOGS DE DEPURAÇÃO
     function renderListForActiveCategory() {
         if (!shoppingListUL) return;
+        console.log("FRONTEND: [renderListForActiveCategory] Iniciando. Categoria Ativa:", categoriaAtiva); // LOG 8
+        console.log("FRONTEND: [renderListForActiveCategory] 'todasAsListas' no momento da renderização:", JSON.parse(JSON.stringify(todasAsListas))); // LOG 9
 
         shoppingListUL.innerHTML = '';
-        const itensDaCategoriaAtiva = todasAsListas[categoriaAtiva] || [];
+        
+        if (!todasAsListas || typeof todasAsListas[categoriaAtiva] === 'undefined') {
+            console.error("FRONTEND: [renderListForActiveCategory] 'todasAsListas' está undefined ou a categoriaAtiva ('" + categoriaAtiva + "') não existe como chave em todasAsListas! Inicializando categoria em todasAsListas.");
+            if (todasAsListas && typeof todasAsListas !== 'object') todasAsListas = {}; // Garante que todasAsListas seja um objeto
+            if (!todasAsListas) todasAsListas = {};
+             todasAsListas[categoriaAtiva] = []; // Define como array vazio para evitar mais erros
+        }
+        
+        const itensDaCategoriaAtiva = todasAsListas[categoriaAtiva] || []; 
+        console.log("FRONTEND: [renderListForActiveCategory] Itens para a categoria ativa ('" + categoriaAtiva + "'):", JSON.parse(JSON.stringify(itensDaCategoriaAtiva))); // LOG 10
+        
         const filteredItems = itensDaCategoriaAtiva.filter(item =>
+            item && item.name && typeof item.name === 'string' && 
             item.name.toLowerCase().includes(currentFilter.toLowerCase())
         );
+        console.log("FRONTEND: [renderListForActiveCategory] Itens filtrados para renderizar:", JSON.parse(JSON.stringify(filteredItems))); // LOG 11
 
         if (itensDaCategoriaAtiva.length === 0) {
             if (emptyListMessage) {
-                emptyListMessage.textContent = `A categoria "${categoriaAtiva.charAt(0).toUpperCase() + categoriaAtiva.slice(1)}" está vazia para a semana ${semanaIdAtiva || 'atual'}!`;
+                emptyListMessage.textContent = `A categoria "${categoriaAtiva.charAt(0).toUpperCase() + categoriaAtiva.slice(1)}" está vazia para a semana ${semanaIdAtiva || 'desconhecida'}!`;
                 emptyListMessage.style.display = 'block';
             }
         } else if (filteredItems.length === 0 && currentFilter) {
@@ -137,11 +171,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         filteredItems.forEach((item) => {
+            if (!item || typeof item.id_interno === 'undefined' || typeof item.categoria === 'undefined' || typeof item.name === 'undefined') {
+                console.error("FRONTEND: [renderListForActiveCategory] Tentando renderizar um item malformado ou undefined:", item);
+                return; 
+            }
+            console.log("FRONTEND: [renderListForActiveCategory] Renderizando item:", JSON.parse(JSON.stringify(item))); // LOG 12
+            
             const listItem = document.createElement('li');
             listItem.classList.add('list-group-item', 'd-flex', 'justify-content-between', 'align-items-center');
-            // Adicionar data-attributes para identificar o item e sua categoria
-            listItem.dataset.itemid = item.id_interno; // O UUID do item
-            listItem.dataset.categoria = item.categoria; // A categoria do item
+            listItem.dataset.itemid = item.id_interno; 
+            listItem.dataset.categoria = item.categoria; 
 
             if (item.comprado) {
                 listItem.classList.add('comprado');
@@ -150,12 +189,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const itemNameSpan = document.createElement('span');
             itemNameSpan.classList.add('item-name');
             itemNameSpan.textContent = item.name;
-            // O evento de clique no nome do item agora também pode usar os data-attributes do LI
             itemNameSpan.addEventListener('click', (e) => {
                 const li = e.target.closest('li');
-                toggleComprado(li.dataset.categoria, li.dataset.itemid);
+                if (li && li.dataset.categoria && li.dataset.itemid) {
+                    toggleComprado(li.dataset.categoria, li.dataset.itemid);
+                } else {
+                    console.error("FRONTEND: [itemNameSpan click] Não foi possível obter categoria ou itemid do elemento li:", li);
+                }
             });
-
 
             const actionsDiv = document.createElement('div');
             const toggleBtn = document.createElement('button');
@@ -168,13 +209,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 toggleBtn.classList.add('btn-outline-success');
                 toggleBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
             }
-            // Event listener será delegado à UL
 
             const removeBtn = document.createElement('button');
             removeBtn.classList.add('btn', 'btn-sm', 'btn-outline-danger', 'btn-remove');
             removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
             removeBtn.title = 'Remover item';
-            // Event listener será delegado à UL
 
             actionsDiv.appendChild(toggleBtn);
             actionsDiv.appendChild(removeBtn);
@@ -183,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
             shoppingListUL.appendChild(listItem);
         });
     }
+
 
     function showFeedback(message, type = 'info') {
         if (feedbackMessageContainer) {
@@ -196,18 +236,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             `;
-            // Limpa mensagens antigas antes de adicionar uma nova para não acumular.
-            // feedbackMessageContainer.innerHTML = ''; (Removido para permitir múltiplas mensagens se necessário, mas com auto-dismiss)
             feedbackMessageContainer.appendChild(alertDiv);
             
-            // Auto-dismiss após 5 segundos
             setTimeout(() => {
                 const activeAlert = document.getElementById(alertId);
                 if(activeAlert){
                     const bsAlert = bootstrap.Alert.getInstance(activeAlert);
                     if (bsAlert) {
                         bsAlert.close();
-                    } else { // Fallback se o JS do Bootstrap não fechar
+                    } else { 
                         activeAlert.remove();
                     }
                 }
@@ -217,49 +254,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Funções de Interação com API ---
 
+    // VERSÃO COM LOGS DE DEPURAÇÃO
     async function carregarItensDaSemana(semanaId = 'atual') {
         const url = `${apiUrlBase}/listas/${semanaId}`;
+        console.log("FRONTEND: [carregarItensDaSemana] Chamando API:", url); // LOG 1
         showFeedback(`Carregando lista para semana ${semanaId}...`, 'info');
         try {
             const response = await fetch(url);
+            console.log("FRONTEND: [carregarItensDaSemana] Resposta crua do fetch:", response); // LOG 2
+
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Erro ${response.status}: ${errorData.error || response.statusText}`);
-            }
-            const backendResponse = await response.json(); // Espera { semanaIdUtilizada: "...", dadosAgrupados: {...} }
-            
-            // MODIFICAÇÃO IMPORTANTE: Esperar que o backend retorne qual semana foi usada para 'atual'
-            if (backendResponse && backendResponse.semanaIdUtilizada) {
-                semanaIdAtiva = backendResponse.semanaIdUtilizada;
-                todasAsListas = backendResponse.dadosAgrupados || get_empty_list_data_frontend();
-            } else if (semanaId !== 'atual') { // Se pediu semana específica e obteve dados
-                semanaIdAtiva = semanaId;
-                todasAsListas = backendResponse || get_empty_list_data_frontend(); // Backend retorna direto os dadosAgrupados
-            } else { // Fallback se 'atual' não retornou semanaIdUtilizada
-                 semanaIdAtiva = (new Date()).getFullYear() + "-S" + String(Math.ceil((((new Date()) - new Date((new Date()).getFullYear(),0,1)) / 86400000 + new Date((new Date()).getFullYear(),0,1).getDay()+1)/7)).padStart(2,'0'); // Cálculo simples, melhor se backend informar
-                 todasAsListas = backendResponse || get_empty_list_data_frontend();
+                let errorText = response.statusText;
+                let errorDataFromServer = {};
+                try {
+                    errorDataFromServer = await response.json(); 
+                    errorText = errorDataFromServer.error || errorDataFromServer.message || response.statusText;
+                    console.error("FRONTEND: [carregarItensDaSemana] Dados do erro JSON:", errorDataFromServer); // LOG ERRO DETALHADO
+                } catch (e) { 
+                    console.error("FRONTEND: [carregarItensDaSemana] Não foi possível parsear JSON do erro, usando statusText. Erro parse:", e);
+                }
+                throw new Error(`Erro ${response.status}: ${errorText}`);
             }
 
-            // Garante que todas as categorias locais existam
+            const backendResponse = await response.json();
+            console.log("FRONTEND: [carregarItensDaSemana] Dados JSON recebidos do backend:", JSON.stringify(backendResponse, null, 2)); // LOG 3
+
+            if (backendResponse && backendResponse.semanaIdUtilizada && backendResponse.dadosAgrupados) {
+                semanaIdAtiva = backendResponse.semanaIdUtilizada;
+                console.log("FRONTEND: [carregarItensDaSemana] semanaIdAtiva definida para:", semanaIdAtiva); // LOG 4
+                todasAsListas = backendResponse.dadosAgrupados;
+            } else if (semanaId !== 'atual' && backendResponse && !backendResponse.semanaIdUtilizada && !backendResponse.dadosAgrupados) { 
+                // Se pediu semana específica E o backend retornou diretamente o objeto de dados agrupados (sem o wrapper)
+                semanaIdAtiva = semanaId;
+                todasAsListas = backendResponse; 
+                console.log("FRONTEND: [carregarItensDaSemana] semanaIdAtiva (específica):", semanaIdAtiva, "Usando dados diretos do backend (sem wrapper)."); // LOG 5
+            } else { 
+                 console.warn("FRONTEND: [carregarItensDaSemana] Backend não retornou a estrutura esperada (semanaIdUtilizada ou dadosAgrupados). Verifique a resposta do backend no LOG 3. Tentando usar backendResponse como dados agrupados se não for null/undefined.");
+                 semanaIdAtiva = (backendResponse && backendResponse.semanaIdUtilizada) ? backendResponse.semanaIdUtilizada : getCurrentWeekIdFrontend();
+                 todasAsListas = (backendResponse && backendResponse.dadosAgrupados) ? backendResponse.dadosAgrupados : ( (backendResponse && Object.keys(backendResponse).length > 0 && typeof backendResponse.semanaIdUtilizada === 'undefined' ) ? backendResponse : get_empty_list_data_frontend() );
+                 console.log("FRONTEND: [carregarItensDaSemana] Usando fallback. semanaIdAtiva:", semanaIdAtiva); // LOG 6
+            }
+            console.log("FRONTEND: [carregarItensDaSemana] Objeto 'todasAsListas' final:", JSON.parse(JSON.stringify(todasAsListas))); // LOG 7
+
             categoriasDisponiveis.forEach(cat => {
                 if (!todasAsListas[cat]) {
                     todasAsListas[cat] = [];
                 }
             });
             
-            loadActiveCategoryState(); // Carrega a aba ativa para a semana carregada
+            loadActiveCategoryState(); 
+            
             if (document.getElementById('categoryTabs')) {
-                renderCategoryTabs(); // Renderiza abas
-                updateActiveTabStatesVisual(); // Garante que a aba correta está ativa visualmente
-                renderListForActiveCategory(); // Renderiza itens para a categoria ativa
+                renderCategoryTabs(); 
+                updateActiveTabStatesVisual();
+                renderListForActiveCategory(); 
             }
-            popularDropdownCategorias(); // Popula dropdown de categorias
+            popularDropdownCategorias();
             showFeedback(`Lista para semana ${semanaIdAtiva} carregada!`, "success");
 
         } catch (error) {
-            console.error(`Falha ao carregar itens para ${semanaId}:`, error);
+            console.error(`FRONTEND: [carregarItensDaSemana] Falha CRÍTICA ao carregar itens para ${semanaId}:`, error); // LOG ERRO
             showFeedback(error.message || "Não foi possível carregar seus itens.", "danger");
-            todasAsListas = get_empty_list_data_frontend();
+            todasAsListas = get_empty_list_data_frontend(); 
             if (document.getElementById('categoryTabs')) {
                  renderCategoryTabs(); renderListForActiveCategory();
             }
@@ -289,6 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const url = `${apiUrlBase}/listas/${semanaIdAtiva}/categorias/${categoriaSelecionada}/items`;
+        console.log("FRONTEND: [adicionarItemHandler] Adicionando item. URL:", url, "Dados:", {nomeItem});
         try {
             const response = await fetch(url, {
                 method: 'POST',
@@ -297,44 +354,47 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
+                const errData = await response.json().catch(() => ({error: `Erro ${response.status} ao adicionar.`}));
                 throw new Error(`Erro ${response.status}: ${errData.error || 'Falha ao adicionar item.'}`);
             }
             const itemAdicionadoDoBackend = await response.json();
+            console.log("FRONTEND: [adicionarItemHandler] Item adicionado no backend:", itemAdicionadoDoBackend);
 
-            // Adicionar o item à 'todasAsListas' localmente
             if (!todasAsListas[itemAdicionadoDoBackend.categoria]) {
                 todasAsListas[itemAdicionadoDoBackend.categoria] = [];
             }
-            // O item do backend já vem com id_interno, name, comprado, categoria
             todasAsListas[itemAdicionadoDoBackend.categoria].push({
                 id_interno: itemAdicionadoDoBackend.id_interno,
                 name: itemAdicionadoDoBackend.name,
                 comprado: itemAdicionadoDoBackend.comprado,
-                categoria: itemAdicionadoDoBackend.categoria, // Garantir que a categoria está no item local
-                categoriaItemID_completo: itemAdicionadoDoBackend.categoriaItemID_completo // Opcional
+                categoria: itemAdicionadoDoBackend.categoria,
+                categoriaItemID_completo: itemAdicionadoDoBackend.categoriaItemID_completo
             });
             
             localStorage.setItem('ultimaCategoriaAdicionada', categoriaSelecionada);
             if (categoriaSelecionada === categoriaAtiva) {
-                renderListForActiveCategory(); // Re-renderiza apenas se a categoria ativa foi modificada
+                renderListForActiveCategory();
             }
             showFeedback(`"${itemAdicionadoDoBackend.name}" adicionado à categoria ${itemAdicionadoDoBackend.categoria}!`, 'success');
             itemInput.value = '';
             itemInput.focus();
 
         } catch (error) {
-            console.error("Falha ao adicionar item:", error);
+            console.error("FRONTEND: [adicionarItemHandler] Falha ao adicionar item:", error);
             showFeedback(error.message || "Erro ao adicionar item.", "danger");
         }
     }
 
     async function toggleComprado(categoria, itemIdInterno) {
         const item = todasAsListas[categoria]?.find(i => i.id_interno === itemIdInterno);
-        if (!item || !semanaIdAtiva) return;
+        if (!item || !semanaIdAtiva) {
+            console.warn("FRONTEND: [toggleComprado] Item não encontrado ou semanaIdAtiva não definida.", {categoria, itemIdInterno, semanaIdAtiva});
+            return;
+        }
 
         const novoEstadoComprado = !item.comprado;
         const url = `${apiUrlBase}/listas/${semanaIdAtiva}/categorias/${categoria}/items/${itemIdInterno}`;
+        console.log("FRONTEND: [toggleComprado] Atualizando item. URL:", url, "Novo estado:", {comprado: novoEstadoComprado});
         try {
             const response = await fetch(url, {
                 method: 'PUT',
@@ -342,59 +402,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ comprado: novoEstadoComprado })
             });
             if (!response.ok) {
-                 const errData = await response.json().catch(() => ({}));
+                 const errData = await response.json().catch(() => ({error: `Erro ${response.status} ao atualizar.`}));
                  throw new Error(`Erro ${response.status}: ${errData.error || 'Falha ao atualizar item.'}`);
             }
             
-            item.comprado = novoEstadoComprado; // Atualiza localmente
-            if (categoria === categoriaAtiva) { // Re-renderiza a lista se for da categoria ativa
+            item.comprado = novoEstadoComprado;
+            if (categoria === categoriaAtiva) {
                 renderListForActiveCategory();
             }
         } catch (error) {
-            console.error("Falha ao atualizar item:", error);
+            console.error("FRONTEND: [toggleComprado] Falha ao atualizar item:", error);
             showFeedback(error.message || "Erro ao atualizar item.", "danger");
         }
     }
 
     async function removerItem(categoria, itemIdInterno) {
-        if (!semanaIdAtiva || !confirm(`Remover "${todasAsListas[categoria]?.find(i=>i.id_interno === itemIdInterno)?.name}" da lista?`)) return;
+        const itemParaRemover = todasAsListas[categoria]?.find(i=>i.id_interno === itemIdInterno);
+        if (!semanaIdAtiva || !itemParaRemover || !confirm(`Remover "${itemParaRemover.name}" da lista?`)) return;
 
         const url = `${apiUrlBase}/listas/${semanaIdAtiva}/categorias/${categoria}/items/${itemIdInterno}`;
+        console.log("FRONTEND: [removerItem] Removendo item. URL:", url);
         try {
             const response = await fetch(url, { method: 'DELETE' });
             if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
+                const errData = await response.json().catch(() => ({error: `Erro ${response.status} ao remover.`}));
                 throw new Error(`Erro ${response.status}: ${errData.error || 'Falha ao remover item.'}`);
             }
 
-            // Remove localmente
             todasAsListas[categoria] = todasAsListas[categoria]?.filter(i => i.id_interno !== itemIdInterno);
-            if (categoria === categoriaAtiva) { // Re-renderiza a lista se for da categoria ativa
+            if (categoria === categoriaAtiva) {
                 renderListForActiveCategory();
             }
             showFeedback("Item removido.", "info");
         } catch (error) {
-            console.error("Falha ao remover item:", error);
+            console.error("FRONTEND: [removerItem] Falha ao remover item:", error);
             showFeedback(error.message || "Erro ao remover item.", "danger");
         }
     }
     
-    // Função de limpar categoria precisa ser adaptada ou removida,
-    // pois agora os itens são individuais. Limpar significaria deletar todos os itens um por um
-    // ou ter um endpoint de backend específico para "limpar categoria da semana".
-    // Por simplicidade, vamos comentar o event listener por enquanto.
-    // if (clearCategoryBtn) {
-    //     clearCategoryBtn.addEventListener('click', () => {
-    //         if(!semanaIdAtiva || !categoriaAtiva) return;
-    //         if (confirm(`Tem certeza que deseja remover TODOS os itens da categoria "${categoriaAtiva}" para a semana ${semanaIdAtiva}?`)) {
-    //             // TODO: Implementar a lógica de deletar múltiplos itens via backend,
-    //             // ou iterar e chamar removerItem para cada um.
-    //             console.warn("Funcionalidade de limpar categoria não totalmente implementada para o novo backend.");
-    //         }
-    //     });
-    // }
-
-
     // --- Event Listeners ---
     if (addItemBtn) {
         addItemBtn.addEventListener('click', adicionarItemHandler);
@@ -413,7 +458,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Delegação de eventos para botões na lista de compras
     if (shoppingListUL) {
         shoppingListUL.addEventListener('click', function(event) {
             const targetButton = event.target.closest('button');
@@ -425,6 +469,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const itemId = listItem.dataset.itemid;
             const categoria = listItem.dataset.categoria;
 
+            // Adicionada verificação para garantir que itemId e categoria não são undefined
+            if (typeof itemId === 'undefined' || typeof categoria === 'undefined') {
+                console.error("FRONTEND: [shoppingListUL click] itemId ou categoria undefined nos data-attributes.", {itemId, categoria, listItem});
+                return;
+            }
+
             if (targetButton.classList.contains('btn-toggle-bought')) {
                 toggleComprado(categoria, itemId);
             } else if (targetButton.classList.contains('btn-remove')) {
@@ -434,10 +484,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Inicialização ---
+    console.log("SCRIPT.JS: Prestes a chamar updateCurrentYear.");
     updateCurrentYear();
-    // Define a semanaIdAtiva inicial e carrega os dados.
-    // Poderia ter um seletor de semana na UI para o usuário mudar 'semanaIdAtiva'
-    // e então chamar carregarItensDaSemana(novaSemanaId).
-    // Por enquanto, sempre carrega "atual".
-    carregarItensDaSemana('atual');
+    console.log("SCRIPT.JS: Prestes a chamar carregarItensDaSemana('atual')."); // LOG C
+    carregarItensDaSemana('atual'); 
+    console.log("SCRIPT.JS: Chamada para carregarItensDaSemana('atual') realizada."); // LOG D
 });
